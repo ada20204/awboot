@@ -1,4 +1,4 @@
-#include "common.h"
+#include "main.h"
 #include "debug.h"
 #include "sunxi_gpio.h"
 
@@ -26,6 +26,9 @@ static uint32_t _port_base_get(gpio_t pin)
 	uint32_t port = pin >> PIO_NUM_IO_BITS;
 
 	switch (port) {
+		case PORTA:
+			return 0x02000000;
+			break;
 		case PORTB:
 			return 0x02000030;
 			break;
@@ -44,17 +47,20 @@ static uint32_t _port_base_get(gpio_t pin)
 		case PORTG:
 			return 0x02000120;
 			break;
+		case PORTH:
+			return 0x02000150;
+			break;
 	}
 
 	return 0;
 }
 
-static inline uint32_t _pin_num(const gpio_t pin)
+static inline uint32_t _pin_num(gpio_t pin)
 {
 	return (pin & ((1 << PIO_NUM_IO_BITS) - 1));
 }
 
-void sunxi_gpio_init(const gpio_t pin, unsigned int cfg)
+void sunxi_gpio_init(gpio_t pin, int cfg)
 {
 	uint32_t port_addr = _port_base_get(pin);
 	uint32_t pin_num   = _pin_num(pin);
@@ -64,12 +70,11 @@ void sunxi_gpio_init(const gpio_t pin, unsigned int cfg)
 	addr = port_addr + GPIO_CFG0 + ((pin_num >> 3) << 2);
 	val	 = read32(addr);
 	val &= ~(0xf << ((pin_num & 0x7) << 2));
-	if (cfg)
-		val |= ((cfg & 0xf) << ((pin_num & 0x7) << 2));
+	val |= ((cfg & 0xf) << ((pin_num & 0x7) << 2));
 	write32(addr, val);
 }
 
-void sunxi_gpio_write(const gpio_t pin, int value)
+void sunxi_gpio_set_value(gpio_t pin, int value)
 {
 	uint32_t port_addr = _port_base_get(pin);
 	uint32_t pin_num   = _pin_num(pin);
@@ -81,7 +86,7 @@ void sunxi_gpio_write(const gpio_t pin, int value)
 	write32(port_addr + GPIO_DAT, val);
 }
 
-int sunxi_gpio_read(const gpio_t pin)
+int sunxi_gpio_read(gpio_t pin)
 {
 	uint32_t port_addr = _port_base_get(pin);
 	uint32_t pin_num   = _pin_num(pin);
@@ -91,7 +96,7 @@ int sunxi_gpio_read(const gpio_t pin)
 	return !!(val & (1 << pin_num));
 }
 
-void sunxi_gpio_set_pull(const gpio_t pin, enum gpio_pull_t pull)
+void sunxi_gpio_set_pull(gpio_t pin, enum gpio_pull_t pull)
 {
 	uint32_t port_addr = _port_base_get(pin);
 	uint32_t pin_num   = _pin_num(pin);
@@ -120,20 +125,5 @@ void sunxi_gpio_set_pull(const gpio_t pin, enum gpio_pull_t pull)
 	val	 = read32(addr);
 	val &= ~(v << ((pin_num & 0xf) << 1));
 	val |= (v << ((pin_num & 0xf) << 1));
-	write32(addr, val);
-}
-
-void sunxi_gpio_set_drive_lvl(const gpio_t pin, uint8_t lvl)
-{
-	uint32_t port_addr = _port_base_get(pin);
-	uint32_t pin_num   = _pin_num(pin);
-	uint32_t addr;
-	uint32_t val;
-
-	lvl &= 3;
-	addr = port_addr + GPIO_DRV0 + ((pin_num >> 4) << 2);
-	val	 = read32(addr);
-	val &= ~(lvl << ((pin_num & 0xf) << 1));
-	val |= (lvl << ((pin_num & 0xf) << 1));
 	write32(addr, val);
 }

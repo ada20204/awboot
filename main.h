@@ -24,6 +24,34 @@
 #define FALSE 0
 #define TRUE  1
 
+/* EGON Header Magic - used by BROM to identify bootable images */
+#define EGON_MAGIC_LINUX  "eGON.BT0"  /* Linux zImage */
+#define EGON_MAGIC_NUTTX  "eGON.NTX"  /* NuttX RTOS */
+
+/* EGON Header Structure - prepended to NuttX images by mksunxi-nuttx */
+struct egon_header_t {
+	uint32_t instruction;      /* Jump instruction (0xea000016) */
+	uint8_t  magic[8];         /* "eGON.BT0" or "eGON.NTX" */
+	uint32_t checksum;         /* Checksum */
+	uint32_t length;           /* Image length */
+	uint8_t  spl_signature[4]; /* SPL signature */
+	uint32_t fel_script_address;
+	uint32_t fel_uenv_length;
+	uint32_t dt_name_offset;
+	uint32_t reserved1;
+	uint32_t boot_media;
+	uint32_t string_pool[13];
+};
+
+#define EGON_HEADER_SIZE sizeof(struct egon_header_t)
+
+/* Image type enumeration */
+typedef enum {
+	IMAGE_TYPE_UNKNOWN = 0,
+	IMAGE_TYPE_LINUX,
+	IMAGE_TYPE_NUTTX,
+} image_type_t;
+
 static inline unsigned int swap_uint32(unsigned int data)
 {
 	volatile unsigned int a, b, c, d;

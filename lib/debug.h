@@ -2,7 +2,6 @@
 #define __DEBUG_H__
 
 #include "xformat.h"
-#include "sunxi_wdg.h"
 
 #define LOG_ERROR 10
 #define LOG_WARN  20
@@ -34,7 +33,7 @@
 #define UNUSED_INFO __attribute__((__unused__))
 #endif
 
-#if LOG_LEVEL >= LOG_WARN
+#if LOG_LEVEL >= LOG_WARNING
 #define warning(fmt, ...) message("[W] " fmt, ##__VA_ARGS__)
 #define UNUSED_WARNING
 #else
@@ -50,13 +49,11 @@
 #define UNUSED_ERROR __attribute__((__unused__))
 #endif
 
-#define fatal(fmt, ...)                                               \
-	{                                                                 \
-		mdelay(300);                                                  \
-		sunxi_wdg_set(1);                                             \
-		message("[F] " fmt "restarting in 1s...\r\n", ##__VA_ARGS__); \
-		while (1) {                                                   \
-		};                                                            \
+#define fatal(fmt, ...)                                         \
+	{                                                           \
+		message("[F] " fmt "restarting...\r\n", ##__VA_ARGS__); \
+		mdelay(100);                                            \
+		reset();                                                \
 	}
 
 void __attribute__((format(printf, 1, 2))) message(const char *fmt, ...);

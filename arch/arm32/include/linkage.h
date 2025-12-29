@@ -5,31 +5,23 @@
 extern "C" {
 #endif
 
-#ifndef ASM_NL
-#define ASM_NL ;
-#endif
-
 #define ALIGN	  .align 0
 #define ALIGN_STR ".align 0"
 
-#define LENTRY(name) \
-	ALIGN ASM_NL    \
+#define ENTRY(name) \
+	.globl name;    \
+	ALIGN;          \
 	name:
 
-#define ENTRY(name)           \
-	.globl name ASM_NL \
-	LENTRY(name)
-
-#define WEAK(name)          \
-	.weak name ASM_NL \
+#define WEAK(name) \
+	.weak name;    \
 	name:
 
-#define END(name) .size name, .-name
+#define END(name) .size name, .- name
 
-#define ENDPROC(name)        \
-	.type name, %function; \
+#define ENDPROC(name)       \
+	.type name, % function; \
 	END(name)
-
 
 #ifdef __cplusplus
 }

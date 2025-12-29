@@ -2,33 +2,32 @@
 //
 // SPDX-License-Identifier: MIT
 
-#include <limits.h>
 #include "string.h"
-#include "common.h"
+#include "main.h"
 
-void *memset(void *dst, int val, size_t len)
+void *memset(void *dst, int val, int cnt)
 {
 	char *d = (char *)dst;
 
-	while (len--)
+	while (cnt--)
 		*d++ = (char)val;
 
 	return dst;
 }
 
-int memcmp(const void *dst, const void *src, size_t len)
+int memcmp(const void *dst, const void *src, unsigned int cnt)
 {
 	const char *d = (const char *)dst;
 	const char *s = (const char *)src;
 	int			r = 0;
 
-	while (len-- && (r = *d++ - *s++) == 0)
+	while (cnt-- && (r = *d++ - *s++) == 0)
 		;
 
 	return r;
 }
 
-size_t strlen(const char *str)
+unsigned int strlen(const char *str)
 {
 	int i = 0;
 
@@ -43,18 +42,6 @@ char *strcpy(char *dst, const char *src)
 	char *bak = dst;
 
 	while ((*dst++ = *src++) != '\0')
-		;
-
-	return bak;
-}
-
-char *strncpy(char *dst, const char *src, size_t len)
-{
-	char *bak = dst;
-	if (!len)
-		return bak;
-
-	while ((*dst++ = *src++) != '\0' && len--)
 		;
 
 	return bak;
@@ -89,11 +76,11 @@ int strcmp(const char *p1, const char *p2)
 	return 0;
 }
 
-int strncmp(const char *p1, const char *p2, size_t len)
+int strncmp(const char *p1, const char *p2, unsigned int cnt)
 {
 	unsigned char c1, c2;
 
-	while (len--) {
+	while (cnt--) {
 		c1 = *p1++;
 		c2 = *p2++;
 
@@ -141,66 +128,38 @@ char *strstr(const char *s1, const char *s2)
 	} while (1);
 }
 
-void *memchr(void *src, int val, size_t len)
+void *memchr(void *src, int val, unsigned int cnt)
 {
 	char *p = NULL;
 	char *s = (char *)src;
 
-	while (len) {
+	while (cnt) {
 		if (*s == val) {
 			p = s;
 			break;
 		}
 		s++;
-		len--;
+		cnt--;
 	}
 
 	return p;
 }
 
-void *memmove(void *dst, const void *src, size_t len)
+void *memmove(void *dst, const void *src, unsigned int cnt)
 {
 	char *p, *s;
 
 	if (dst <= src) {
 		p = (char *)dst;
 		s = (char *)src;
-		while (len--)
+		while (cnt--)
 			*p++ = *s++;
 	} else {
-		p = (char *)dst + len;
-		s = (char *)src + len;
-		while (len--)
+		p = (char *)dst + cnt;
+		s = (char *)src + cnt;
+		while (cnt--)
 			*--p = *--s;
 	}
 
 	return dst;
-}
-
-int atoi(char *str)
-{
-	int sign = 1, base = 0, i = 0;
-
-	// if whitespaces then ignore.
-	while (str[i] == ' ') {
-		i++;
-	}
-
-	// sign of number
-	if (str[i] == '-' || str[i] == '+') {
-		sign = 1 - 2 * (str[i++] == '-');
-	}
-
-	// checking for valid input
-	while (str[i] >= '0' && str[i] <= '9') {
-		// handling overflow test case
-		if (base > INT_MAX / 10 || (base == INT_MAX / 10 && str[i] - '0' > 7)) {
-			if (sign == 1)
-				return INT_MAX;
-			else
-				return INT_MIN;
-		}
-		base = 10 * base + (str[i++] - '0');
-	}
-	return base * sign;
 }

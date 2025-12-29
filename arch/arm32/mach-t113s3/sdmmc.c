@@ -26,7 +26,7 @@
  *
  */
 
-#include "common.h"
+#include "main.h"
 #include "debug.h"
 #include "sunxi_sdhci.h"
 #include "sdmmc.h"
@@ -118,9 +118,6 @@
 #define EXT_CSD_DDR_BUS_WIDTH_4 5 /* Card is in 4 bit DDR mode */
 #define EXT_CSD_DDR_BUS_WIDTH_8 6 /* Card is in 8 bit DDR mode */
 
-#define EXT_CSD_TIMING_BC	0
-#define EXT_CSD_TIMING_HS	1
-
 #define EXT_CSD_CARD_TYPE_26	   (1 << 0) /* Card can run at 26MHz */
 #define EXT_CSD_CARD_TYPE_52	   (1 << 1) /* Card can run at 52MHz */
 #define EXT_CSD_CARD_TYPE_MASK	   0x3F /* Mask out reserved bits */
@@ -149,13 +146,13 @@ sdmmc_pdata_t card0;
 		const int	   __size = size;                                \
 		const uint32_t __mask = (__size < 32 ? 1 << __size : 0) - 1; \
 		const int	   __off  = 3 - ((start) / 32);                  \
-		const int	   __shft = (start) & 31;                        \
+		const int	   __shft = (start)&31;                          \
 		uint32_t	   __res;                                        \
                                                                      \
 		__res = resp[__off] >> __shft;                               \
 		if (__size + __shft > 32)                                    \
 			__res |= resp[__off - 1] << ((32 - __shft) % 32);        \
-		__res & __mask;                                              \
+		__res &__mask;                                               \
 	})
 
 static const unsigned tran_speed_unit[] = {
@@ -181,7 +178,7 @@ static bool go_idle_state(sdhci_t *hci)
 	return sdhci_transfer(hci, &cmd, NULL);
 }
 
-#if CONFIG_BOOT_SDCARD
+#ifdef CONFIG_BOOT_SDCARD
 static bool sd_send_if_cond(sdhci_t *hci, sdmmc_t *card)
 {
 	sdhci_cmd_t cmd = {0};
@@ -266,7 +263,7 @@ static bool sd_send_op_cond(sdhci_t *hci, sdmmc_t *card)
 }
 #endif
 
-#if CONFIG_BOOT_MMC
+#ifdef CONFIG_BOOT_MMC
 static bool mmc_send_op_cond(sdhci_t *hci, sdmmc_t *card)
 {
 	sdhci_cmd_t cmd		= {0};
@@ -397,9 +394,9 @@ static bool sdmmc_detect(sdhci_t *hci, sdmmc_t *card)
 
 // Both SD & MMC: try SD first
 // Otherwise there's only one media type if enabled
-#if CONFIG_BOOT_SDCARD
+#ifdef CONFIG_BOOT_SDCARD
 	if (!sd_send_op_cond(hci, card)) {
-#if CONFIG_BOOT_MMC
+#ifdef CONFIG_BOOT_MMC
 		sdhci_reset(hci);
 		sdhci_set_clock(hci, MMC_CLK_400K);
 		sdhci_set_width(hci, MMC_BUS_WIDTH_1);
@@ -420,19 +417,19 @@ static bool sdmmc_detect(sdhci_t *hci, sdmmc_t *card)
 #endif
 	}
 // Only MMC
-#elif CONFIG_BOOT_MMC
-	// // Workaround for eMMC starting in alternative boot mode
-	// sdhci_reset(hci);
-	// if (!sdhci_set_clock(hci, MMC_CLK_400K) || !sdhci_set_width(hci, MMC_BUS_WIDTH_1)) {
-	// 	error("SMHC: set clock/width failed\r\n");
-	// 	return FALSE;
-	// }
+#elif defined(CONFIG_BOOT_MMC)
+	// Workaround for eMMC starting in alternative boot mode
+	sdhci_reset(hci);
+	if (!sdhci_set_clock(hci, MMC_CLK_400K) || !sdhci_set_width(hci, MMC_BUS_WIDTH_1)) {
+		error("SMHC: set clock/width failed\r\n");
+		return FALSE;
+	}
 
-	// if (!go_idle_state(hci)) {
-	// 	error("SMHC: set idle state failed\r\n");
-	// 	return FALSE;
-	// }
-	// udelay(2000); // 1ms + 74 clocks @ 400KHz (185us)
+	if (!go_idle_state(hci)) {
+		error("SMHC: set idle state failed\r\n");
+		return FALSE;
+	}
+	udelay(2000); // 1ms + 74 clocks @ 400KHz (185us)
 
 	if (!mmc_send_op_cond(hci, card)) {
 		debug("SMHC: MMC detect failed\r\n");
@@ -610,7 +607,7 @@ static bool sdmmc_detect(sdhci_t *hci, sdmmc_t *card)
 	debug("SMHC: capacity %.1fGB\r\n", (f32)((f64)card->capacity / (f64)1000000000.0));
 
 	if (hci->isspi) {
-		if (!sdhci_set_clock(hci, min(card->tran_speed, hci->clock_wanted)) || !sdhci_set_width(hci, MMC_BUS_WIDTH_1)) {
+		if (!sdhci_set_clock(hci, min(card->tran_speed, hci->clock)) || !sdhci_set_width(hci, MMC_BUS_WIDTH_1)) {
 			error("SMHC: set clock/width failed\r\n");
 			return FALSE;
 		}
@@ -633,52 +630,9 @@ static bool sdmmc_detect(sdhci_t *hci, sdmmc_t *card)
 			if (!sdhci_transfer(hci, &cmd, NULL))
 				return FALSE;
 		} else if (card->version & MMC_VERSION_MMC) {
-#if CONFIG_MMC_ENABLE_RSTN
-			if (card->extcsd[EXT_CSD_RST_N_FUNCTION] == 0) {
-				cmd.idx		 = SD_CMD_SWITCH_FUNC;
-				cmd.resptype = MMC_RSP_R1;
-				cmd.arg		 = (3 << 24) | (EXT_CSD_RST_N_FUNCTION << 16) | 1 << 8 | EXT_CSD_CMD_SET_NORMAL;
-
-				if (sdhci_transfer(hci, &cmd, NULL)) {
-					debug("SHMC: eMMC hardware reset signal enabled\r\n");
-				} else {
-					warning("SHMC: failed to enable eMMC hardware reset signal\r\n");
-				}
-			} else {
-				debug("SHMC: eMMC hardware reset signal already enabled\r\n");
-			}
-#else
-			debug("SMHC: eMMC hardware reset signal skipped\r\n");
-#endif
-
-			u8 card_type = card->extcsd[EXT_CSD_CARD_TYPE];
-			bool want_ddr = hci->clock_wanted == MMC_CLK_50M_DDR;
-
-			if (want_ddr && !(card_type & EXT_CSD_CARD_TYPE_DDR_52)) {
-				warning("SMHC: controller requested DDR but card does not advertise DDR support, falling back to high-speed SDR\r\n");
-				hci->clock_wanted = MMC_CLK_50M;
-				want_ddr = false;
-			}
-
-			if (hci->clock_wanted >= MMC_CLK_50M) {
-				if (!(card_type & (EXT_CSD_CARD_TYPE_52 | EXT_CSD_CARD_TYPE_DDR_52))) {
-					warning("SMHC: card does not advertise high-speed timing, using 25MHz\r\n");
-					hci->clock_wanted = MMC_CLK_25M;
-					want_ddr = false;
-				} else {
-					cmd.idx		 = SD_CMD_SWITCH_FUNC;
-					cmd.resptype = MMC_RSP_R1;
-					cmd.arg		 = (3 << 24) | (EXT_CSD_HS_TIMING << 16) | (EXT_CSD_TIMING_HS << 8) | EXT_CSD_CMD_SET_NORMAL;
-					if (!sdhci_transfer(hci, &cmd, NULL))
-						return FALSE;
-					udelay(1000);
-					card->extcsd[EXT_CSD_HS_TIMING] = EXT_CSD_TIMING_HS;
-				}
-			}
-
 			switch (hci->width) {
 				case MMC_BUS_WIDTH_4:
-					if (want_ddr)
+					if (hci->clock == MMC_CLK_50M_DDR)
 						width = EXT_CSD_DDR_BUS_WIDTH_4;
 					else
 						width = EXT_CSD_BUS_WIDTH_4;
@@ -707,15 +661,13 @@ static bool sdmmc_detect(sdhci_t *hci, sdmmc_t *card)
 			}
 
 			// Write EXT_CSD register 183 (width) with our value
-			cmd.idx		 = SD_CMD_SWITCH_FUNC;
-			cmd.resptype = MMC_RSP_R1;
-			cmd.arg		 = (3 << 24) | (EXT_CSD_BUS_WIDTH << 16) | (width << 8) | 1;
+			cmd.arg = (3 << 24) | (EXT_CSD_BUS_WIDTH << 16) | (width << 8) | 1;
 			if (!sdhci_transfer(hci, &cmd, NULL))
 				return FALSE;
 
 			udelay(1000);
 		}
-		if (!sdhci_set_clock(hci, hci->clock_wanted) || !sdhci_set_width(hci, hci->width)) {
+		if (!sdhci_set_clock(hci, hci->clock) || !sdhci_set_width(hci, hci->width)) {
 			error("SMHC: set clock/width failed\r\n");
 			return FALSE;
 		}
@@ -746,19 +698,18 @@ uint64_t sdmmc_blk_read(sdmmc_pdata_t *data, uint8_t *buf, uint64_t blkno, uint6
 	return blkcnt;
 }
 
-int sdmmc_init(sdmmc_pdata_t *data, sdhci_t *hci)
-{
-	data->hci	 = hci;
-	data->online = FALSE;
-	int retries	 = 10;
+int sdmmc_init(sdmmc_pdata_t *data, sdhci_t *hci) {
+    data->hci = hci;
+    data->online = FALSE;
+    int retries = 10;
 
-	do {
-		if (sdmmc_detect(data->hci, &data->card) == TRUE) {
-			info("SHMC: %s card detected\r\n", data->card.version & SD_VERSION_SD ? "SD" : "MMC");
-			return 0;
-		}
-		mdelay(100);
-	} while (retries--);
+    do {
+        if (sdmmc_detect(data->hci, &data->card) == TRUE) {
+            info("SHMC: %s card detected\r\n", data->card.version & SD_VERSION_SD ? "SD" : "MMC");
+            return 0;
+        }
+        mdelay(100);
+    } while (retries--);
 
-	return -1;
+    return -1;
 }

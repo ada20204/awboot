@@ -1,5 +1,4 @@
 #include <arch/arm32/include/linkage.h>
-#include "config.h"
 
 #define CONFIG_NBOOT_STACK	0x38000
 
@@ -58,8 +57,6 @@ reset:
 	bic     r0, r0, #0x00001000     @ clear bit 12 (I) I-cache
 	mcr     p15, 0, r0, c1, c0, 0
 
-	bl	cpu_init_cp15
-
 	/* Enable neon/vfp unit */
 	mrc p15, 0, r0, c1, c0, 2
 	orr r0, r0, #(0xf << 20)
@@ -86,7 +83,7 @@ reset:
 	msr     cpsr,r0
 
 	@set cntfrq to 24M
-	ldr r0, =CONFIG_COUNTER_FREQUENCY
+	ldr r0, =24000000
 	mcr p15, 0, r0, c14, c0, 0
 
 	bl main
@@ -102,32 +99,6 @@ reset:
 	blt clbss_1
 
 	mov pc, lr
-
-ENTRY(cpu_init_cp15)
-	/* Enable SMP bit before cache/TLB maintenance */
-	mrc	p15, 0, r0, c1, c0, 1
-	orr	r0, r0, #(1 << 6)
-	mcr	p15, 0, r0, c1, c0, 1
-
-	/* Invalidate TLBs, I-cache, branch predictor */
-	mov	r0, #0
-	mcr	p15, 0, r0, c8, c7, 0
-	mcr	p15, 0, r0, c7, c5, 0
-	mcr	p15, 0, r0, c7, c5, 6
-	dsb
-	isb
-
-	/* Disable MMU/cache features, keep BTB enabled */
-	mrc	p15, 0, r0, c1, c0, 0
-	bic	r0, r0, #0x00002000
-	bic	r0, r0, #0x00000007
-	orr	r0, r0, #0x00000002	/* alignment fault enable */
-	orr	r0, r0, #0x00000800	/* enable branch predictor */
-	bic	r0, r0, #0x00001000	/* keep I-cache disabled */
-	mcr	p15, 0, r0, c1, c0, 0
-	isb
-	bx	lr
-ENDPROC(cpu_init_cp15)
 
 _vector:
 	b reset

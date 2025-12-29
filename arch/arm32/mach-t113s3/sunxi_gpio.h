@@ -17,13 +17,15 @@ enum {
 	GPIO_DISABLED	  = 0xf,
 };
 
-#define PORTB			 0
-#define PORTC			 1
-#define PORTD			 2
-#define PORTE			 3
-#define PORTF			 4
-#define PORTG			 5
-#define SUNXI_GPIO_PORTS (PORTG + 1)
+#define PORTA			 0
+#define PORTB			 1
+#define PORTC			 2
+#define PORTD			 3
+#define PORTE			 4
+#define PORTF			 5
+#define PORTG			 6
+#define PORTH			 7
+#define SUNXI_GPIO_PORTS (PORTH + 1)
 
 enum gpio_pull_t {
 	GPIO_PULL_UP   = 0,
@@ -41,10 +43,9 @@ typedef struct {
 	uint8_t mux;
 } gpio_mux_t;
 
-void sunxi_gpio_init(gpio_t pin, unsigned int cfg);
-void sunxi_gpio_write(gpio_t pin, int value);
-int	 sunxi_gpio_read(gpio_t pin);
-void sunxi_gpio_set_pull(gpio_t pin, enum gpio_pull_t pull);
-void sunxi_gpio_set_drive_lvl(const gpio_t pin, uint8_t lvl);
+extern void sunxi_gpio_init(gpio_t pin, int cfg);
+extern void sunxi_gpio_set_value(gpio_t pin, int value);
+extern int	sunxi_gpio_read(gpio_t pin);
+extern void sunxi_gpio_set_pull(gpio_t pin, enum gpio_pull_t pull);
 
 #endif

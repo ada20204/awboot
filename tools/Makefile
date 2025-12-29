@@ -2,11 +2,14 @@
 BUILD_DIR=build
 
 MKSUNXI = mksunxi
+MKSUNXI_NUTTX = mksunxi-nuttx
 
 CSRC    = mksunxi.c
+CSRC_NUTTX = mksunxi-nuttx.c
 CXXSRC  =
 
 COBJS   = $(addprefix $(BUILD_DIR)/,$(CSRC:.c=.o))
+COBJS_NUTTX = $(addprefix $(BUILD_DIR)/,$(CSRC_NUTTX:.c=.o))
 CXXOBJS = $(addprefix $(BUILD_DIR)/,$(CXXSRC:.cpp=.opp))
 
 INCLUDES = -I includes -I ../lib
@@ -17,7 +20,7 @@ CC  ?= gcc
 CXX ?= g++
 
 all: tools
-tools: $(MKSUNXI)
+tools: $(MKSUNXI) $(MKSUNXI_NUTTX)
 
 .PHONY: all tools clean
 .SILENT:
@@ -25,6 +28,7 @@ tools: $(MKSUNXI)
 clean:
 	rm -rf build
 	rm -f $(MKSUNXI)
+	rm -f $(MKSUNXI_NUTTX)
 
 $(BUILD_DIR)/%.o : %.c
 	echo "  CC    $@"
@@ -39,3 +43,7 @@ $(BUILD_DIR)/%.opp : %.cpp
 $(MKSUNXI): $(COBJS)
 	echo "  LD    $@"
 	$(CC) $(CFLAGS) $(COBJS) -o $(MKSUNXI)
+
+$(MKSUNXI_NUTTX): $(COBJS_NUTTX)
+	echo "  LD    $@"
+	$(CC) $(CFLAGS) $(COBJS_NUTTX) -o $(MKSUNXI_NUTTX)

@@ -26,7 +26,7 @@
  *
  */
 
-#include "common.h"
+#include "main.h"
 #include "sdmmc.h"
 #include "debug.h"
 #include "barrier.h"
@@ -36,8 +36,6 @@
 
 #define FALSE 0
 #define TRUE  1
-
-static int config_delay(sdhci_t *sdhci);
 
 /*
  * Global control register bits
@@ -217,63 +215,7 @@ timing mode
 #define SDXC_NTDC_CFG_NEW_DLY (0xF << 0)
 
 #define DTO_MAX						200
-#define SDXC_CAL_START        BIT(15)
-#define SDXC_CAL_DONE         BIT(14)
-#define SDXC_CAL_DL_SHIFT     8
-#define SDXC_CAL_DL_MASK      0x3f
-#define SDXC_CAL_DL_SW_SHIFT  0
-#define SDXC_CAL_DL_SW_EN     BIT(7)
-#define SDXC_CAL_TIMEOUT_MS   50
 #define SUNXI_MMC_NTSR_MODE_SEL_NEW (0x1 << 31)
-
-static void sdhci_configure_start_bit_detection(sdhci_t *sdhci, bool hs400_mode)
-{
-	u32 val = sdhci->reg->dsbd;
-
-	val &= ~((1U << 31) | (1U << 0));
-	if (hs400_mode)
-		val |= (1U << 31);
-
-	/* Enable half-cycle start bit to match eMMC 4.5 behaviour */
-	val |= (1U << 0);
-
-	sdhci->reg->dsbd = val;
-}
-
-static bool smhc_get_ccu_params(const sdhci_t *sdhci, volatile u32 **clk_cfg, u32 *gate_mask, u32 *reset_mask)
-{
-	if (!sdhci)
-		return false;
-
-	switch (sdhci->id) {
-		case 0:
-			if (clk_cfg)
-				*clk_cfg = &ccu->smhc0_clk_cfg;
-			if (gate_mask)
-				*gate_mask = CCU_MMC_BGR_SMHC0_GATE;
-			if (reset_mask)
-				*reset_mask = CCU_MMC_BGR_SMHC0_RST;
-			return true;
-		case 1:
-			if (clk_cfg)
-				*clk_cfg = &ccu->smhc1_clk_cfg;
-			if (gate_mask)
-				*gate_mask = CCU_MMC_BGR_SMHC1_GATE;
-			if (reset_mask)
-				*reset_mask = CCU_MMC_BGR_SMHC1_RST;
-			return true;
-		case 2:
-			if (clk_cfg)
-				*clk_cfg = &ccu->smhc2_clk_cfg;
-			if (gate_mask)
-				*gate_mask = CCU_MMC_BGR_SMHC2_GATE;
-			if (reset_mask)
-				*reset_mask = CCU_MMC_BGR_SMHC2_RST;
-			return true;
-		default:
-			return false;
-	}
-}
 
 static void set_read_timeout(sdhci_t *sdhci, u32 timeout)
 {
@@ -281,17 +223,17 @@ static void set_read_timeout(sdhci_t *sdhci, u32 timeout)
 	u32 rdto_clk = 0;
 	u32 mode_2x	 = 0;
 
-	rdto_clk = sdhci->clock_active / 1000 * timeout;
+	rdto_clk = sdhci->clock / 1000 * timeout;
 	rval	 = sdhci->reg->ntsr;
 	mode_2x	 = rval & (0x1 << 31);
 
-	if ((sdhci->clock_active == MMC_CLK_50M_DDR && mode_2x)) {
+	if ((sdhci->clock == MMC_CLK_50M_DDR && mode_2x)) {
 		rdto_clk = rdto_clk << 1;
 	}
 
 	rval = sdhci->reg->gctrl;
 	/*ddr50 mode don't use 256x timeout unit*/
-	if (rdto_clk > 0xffffff && sdhci->clock_active == MMC_CLK_50M_DDR) {
+	if (rdto_clk > 0xffffff && sdhci->clock == MMC_CLK_50M_DDR) {
 		rdto_clk = (rdto_clk + 255) / 256;
 		rval |= (0x1 << 11);
 	} else {
@@ -305,15 +247,15 @@ static void set_read_timeout(sdhci_t *sdhci, u32 timeout)
 	rval |= (rdto_clk << 8);
 	sdhci->reg->timeout = rval;
 
-	trace("rdtoclk:%" PRIu32 ", reg-tmout:%" PRIu32 ", gctl:%" PRIx32 ", clock:%u, nstr:%" PRIx32 "\r\n", rdto_clk,
-		  sdhci->reg->timeout, sdhci->reg->gctrl, sdhci->clock_active, sdhci->reg->ntsr);
+	trace("rdtoclk:%" PRIu32 ", reg-tmout:%" PRIu32 ", gctl:%" PRIx32 ", clock:%u, nstr:%" PRIx32 "\n", rdto_clk, sdhci->reg->timeout, sdhci->reg->gctrl,
+		  sdhci->clock, sdhci->reg->ntsr);
 }
 
 static int prepare_dma(sdhci_t *sdhci, sdhci_data_t *data)
 {
 	sdhci_idma_desc_t *pdes		= sdhci->dma_desc;
 	u32				   byte_cnt = data->blksz * data->blkcnt;
-	u8				  *buff;
+	u8				   *buff;
 	u32				   des_idx		 = 0;
 	u32				   buff_frag_num = 0;
 	u32				   remain;
@@ -348,7 +290,7 @@ static int prepare_dma(sdhci_t *sdhci, sdhci_data_t *data)
 			pdes[des_idx].next_desc_addr = ((u32)&pdes[des_idx + 1]) >> 2;
 		}
 		trace("SMHC: frag %" PRIu32 ", remain %" PRIu32 ", des[%" PRIu32 "] = 0x%08" PRIx32 ":\r\n"
-			  "    [0] = 0x%08" PRIx32 ", [1] = 0x%08" PRIx32 ", [2] = 0x%08" PRIx32 ", [3] = 0x%08" PRIx32 "\r\n",
+			  "  [0] = 0x%08" PRIx32 ", [1] = 0x%08" PRIx32 ", [2] = 0x%08" PRIx32 ", [3] = 0x%08" PRIx32 "\r\n",
 			  i, remain, des_idx, (u32)(&pdes[des_idx]), (u32)((u32 *)&pdes[des_idx])[0],
 			  (u32)((u32 *)&pdes[des_idx])[1], (u32)((u32 *)&pdes[des_idx])[2], (u32)((u32 *)&pdes[des_idx])[3]);
 	}
@@ -388,7 +330,7 @@ static int prepare_dma(sdhci_t *sdhci, sdhci_data_t *data)
 	return 0;
 }
 
-static int wait_done(sdhci_t *sdhci, sdhci_data_t *dat, u32 timeout_msecs, u32 flag, bool dma, u32 *status_out)
+static int wait_done(sdhci_t *sdhci, sdhci_data_t *dat, u32 timeout_msecs, u32 flag, bool dma)
 {
 	u32 status;
 	u32 done  = 0;
@@ -397,12 +339,12 @@ static int wait_done(sdhci_t *sdhci, sdhci_data_t *dat, u32 timeout_msecs, u32 f
 	do {
 		status = sdhci->reg->rint;
 		if ((time_ms() > (start + timeout_msecs))) {
-			if (status_out)
-				*status_out = status;
+			warning("SMHC: wait timeout %" PRIx32 " status %" PRIx32 " flag %" PRIx32 "\r\n", status & SMHC_RINT_INTERRUPT_ERROR_BIT, status,
+					flag);
 			return -1;
 		} else if ((status & SMHC_RINT_INTERRUPT_ERROR_BIT)) {
-			if (status_out)
-				*status_out = status;
+			warning("SMHC: error 0x%" PRIx32 " status 0x%" PRIx32 "\r\n", status & SMHC_RINT_INTERRUPT_ERROR_BIT,
+					status & ~SMHC_RINT_INTERRUPT_ERROR_BIT);
 			return -1;
 		}
 		if (dat && dma && (dat->blkcnt * dat->blksz) > 0)
@@ -410,9 +352,6 @@ static int wait_done(sdhci_t *sdhci, sdhci_data_t *dat, u32 timeout_msecs, u32 f
 		else
 			done = (status & flag);
 	} while (!done);
-
-	if (status_out)
-		*status_out = status;
 
 	return 0;
 }
@@ -433,8 +372,7 @@ static bool read_bytes(sdhci_t *sdhci, sdhci_data_t *dat)
 	status = sdhci->reg->status;
 	err	   = sdhci->reg->rint & SMHC_RINT_INTERRUPT_ERROR_BIT;
 	if (err)
-		warning("SMHC: interrupt error 0x%" PRIx32 " status 0x%" PRIx32 "\r\n", err & SMHC_RINT_INTERRUPT_ERROR_BIT,
-				status);
+		warning("SMHC: interrupt error 0x%" PRIx32 " status 0x%" PRIx32 "\r\n", err & SMHC_RINT_INTERRUPT_ERROR_BIT, status);
 
 	while ((!err) && (count >= sizeof(sdhci->reg->fifo))) {
 		while (sdhci->reg->status & SMHC_STATUS_FIFO_EMPTY) {
@@ -465,8 +403,7 @@ static bool read_bytes(sdhci_t *sdhci, sdhci_data_t *dat)
 	} while (!done && !err);
 
 	if (err & SMHC_RINT_INTERRUPT_ERROR_BIT) {
-		warning("SMHC: interrupt error 0x%" PRIx32 " status 0x%" PRIx32 "\r\n", err & SMHC_RINT_INTERRUPT_ERROR_BIT,
-				status);
+		warning("SMHC: interrupt error 0x%" PRIx32 " status 0x%" PRIx32 "\r\n", err & SMHC_RINT_INTERRUPT_ERROR_BIT, status);
 		return FALSE;
 	}
 
@@ -529,8 +466,7 @@ bool sdhci_transfer(sdhci_t *sdhci, sdhci_cmd_t *cmd, sdhci_data_t *dat)
 	u32	 timeout;
 	bool dma = false;
 
-	trace("SMHC: CMD%" PRIu32 " 0x%" PRIx32 " dlen:%" PRIu32 "\r\n", cmd->idx, cmd->arg,
-		  dat ? dat->blkcnt * dat->blksz : 0);
+	trace("SMHC: CMD%" PRIu32 " 0x%" PRIx32 " dlen:%" PRIu32 "\r\n", cmd->idx, cmd->arg, dat ? dat->blkcnt * dat->blksz : 0);
 
 	if (cmd->idx == MMC_STOP_TRANSMISSION) {
 		timeout = time_ms();
@@ -553,10 +489,6 @@ bool sdhci_transfer(sdhci_t *sdhci, sdhci_cmd_t *cmd, sdhci_data_t *dat)
 		if (cmd->resptype & MMC_RSP_CRC)
 			cmdval |= SMHC_CMD_CHECK_RESPONSE_CRC;
 	}
-
-	/* The hold register keeps the command output aligned at high speed/DDR. */
-	if (sdhci->clock_active >= MMC_CLK_50M)
-		cmdval |= SMHC_CMD_USE_HOLD_REGISTER;
 
 	if (dat) {
 		sdhci->reg->blksz	= dat->blksz;
@@ -596,17 +528,13 @@ bool sdhci_transfer(sdhci_t *sdhci, sdhci_cmd_t *cmd, sdhci_data_t *dat)
 		sdhci->reg->cmd = cmdval | cmd->idx | SMHC_CMD_START; // Start
 	}
 
-	status = 0;
-	if (wait_done(sdhci, 0, 100, SMHC_RINT_COMMAND_DONE, false, &status)) {
-		warning("SMHC: cmd%" PRIu32 " timeout (rint=0x%08" PRIx32 ", flag=0x%08" PRIx32 ")\r\n",
-			cmd->idx, status, (u32)SMHC_RINT_COMMAND_DONE);
+	if (wait_done(sdhci, 0, 100, SMHC_RINT_COMMAND_DONE, false)) {
+		warning("SMHC: cmd timeout\r\n");
 		return FALSE;
 	}
 
-	if (dat && wait_done(sdhci, dat, 6000, dat->blkcnt > 1 ? SMHC_RINT_AUTO_COMMAND_DONE : SMHC_RINT_DATA_OVER, dma, &status)) {
-		u32 complete_flag = dat->blkcnt > 1 ? SMHC_RINT_AUTO_COMMAND_DONE : SMHC_RINT_DATA_OVER;
-		warning("SMHC: data timeout on cmd%" PRIu32 " (rint=0x%08" PRIx32 ", flag=0x%08" PRIx32 ", idst=0x%08" PRIx32 ")\r\n",
-			cmd->idx, status, complete_flag, sdhci->reg->idst);
+	if (dat && wait_done(sdhci, dat, 6000, dat->blkcnt > 1 ? SMHC_RINT_AUTO_COMMAND_DONE : SMHC_RINT_DATA_OVER, dma)) {
+		warning("SMHC: data timeout\r\n");
 		return FALSE;
 	}
 
@@ -653,43 +581,25 @@ bool sdhci_reset(sdhci_t *sdhci)
 bool sdhci_set_width(sdhci_t *sdhci, u32 width)
 {
 	const char UNUSED_TRACE *mode = "1 bit";
-	bool enable_ddr				 = false;
-
-	u32 gctrl = sdhci->reg->gctrl;
-
+	sdhci->reg->gctrl &= ~SMHC_GCTRL_DDR_MODE;
 	switch (width) {
 		case MMC_BUS_WIDTH_1:
 			sdhci->reg->width = SMHC_WIDTH_1BIT;
 			break;
 		case MMC_BUS_WIDTH_4:
 			sdhci->reg->width = SMHC_WIDTH_4BIT;
-			mode		  = "4 bit";
-			enable_ddr = (sdhci->clock_active == MMC_CLK_50M_DDR);
-			if (enable_ddr)
-				mode = "4 bit DDR";
+			mode			  = "4 bit";
 			break;
 		default:
 			error("SMHC: %" PRIu32 " width value invalid\r\n", width);
 			return FALSE;
 	}
-
-	if (enable_ddr)
-		gctrl |= (SMHC_GCTRL_DDR_MODE | SMHC_GCTRL_POSEDGE_LATCH_DATA);
-	else
-		gctrl &= ~SMHC_GCTRL_DDR_MODE;
-
-	sdhci->reg->gctrl = gctrl;
-
-	/* Re-apply start bit detection settings after clock gating resets the block. */
-	sdhci_configure_start_bit_detection(sdhci, false);
-
-	/* Re-run delay calibration once DDR is active so the sampling window matches */
-	if (enable_ddr) {
-		if (config_delay(sdhci) < 0)
-			warning("SMHC: DDR delay calibration failed\r\n");
+	if (sdhci->clock == MMC_CLK_50M_DDR) {
+		sdhci->reg->gctrl |= SMHC_GCTRL_DDR_MODE;
+		mode = "4 bit DDR";
 	}
 
-	debug("SMHC: set width to %s (gctrl=0x%08" PRIx32 ", clk_active=%u)\r\n", mode, sdhci->reg->gctrl, sdhci->clock_active);
+	trace("SMHC: set width to %s\r\n", mode);
 	return TRUE;
 }
 
@@ -699,48 +609,31 @@ static int init_default_timing(sdhci_t *sdhci)
 	sdhci->odly[MMC_CLK_25M]	 = TM5_OUT_PH180;
 	sdhci->odly[MMC_CLK_50M]	 = TM5_OUT_PH180;
 	sdhci->odly[MMC_CLK_50M_DDR] = TM5_OUT_PH90;
-	sdhci->odly[MMC_CLK_100M]	 = TM5_OUT_PH90;
-	sdhci->odly[MMC_CLK_150M]	 = TM5_OUT_PH90;
-	sdhci->odly[MMC_CLK_200M]	 = TM5_OUT_PH90;
 
 	sdhci->sdly[MMC_CLK_400K]	 = TM5_IN_PH180;
 	sdhci->sdly[MMC_CLK_25M]	 = TM5_IN_PH180;
 	sdhci->sdly[MMC_CLK_50M]	 = TM5_IN_PH90;
 	sdhci->sdly[MMC_CLK_50M_DDR] = TM5_IN_PH180;
-	sdhci->sdly[MMC_CLK_100M]	 = TM5_IN_PH90;
-	sdhci->sdly[MMC_CLK_150M]	 = TM5_IN_PH90;
-	sdhci->sdly[MMC_CLK_200M]	 = TM5_IN_PH90;
 
 	return 0;
 }
 
 static int config_delay(sdhci_t *sdhci)
 {
-	u32	      calib, timeout, delay;
-	u32			  rval, freq;
-	u8			  odly, sdly;
-	volatile u32 *clk_cfg;
+	u32 rval, freq;
+	u8	odly, sdly;
 
-	if (!smhc_get_ccu_params(sdhci, &clk_cfg, NULL, NULL)) {
-		error("SMHC: unsupported controller id %u\r\n", sdhci->id);
-		return -1;
-	}
-
-	freq = sdhci->clock_active;
-	if (freq >= SMHC_CLK_COUNT) {
-		error("SMHC: invalid timing index %u\r\n", (unsigned int)freq);
-		return -1;
-	}
+	freq = sdhci->clock;
 
 	odly = sdhci->odly[freq];
 	sdly = sdhci->sdly[freq];
 
 	trace("SMHC: odly: %d   sldy: %d\r\n", odly, sdly);
 
-	*clk_cfg &= (~CCU_MMC_CTRL_ENABLE);
+	ccu->smhc0_clk_cfg &= (~CCU_MMC_CTRL_ENABLE);
 	sdhci->reg->drv_dl &= (~(0x3 << 16));
 	sdhci->reg->drv_dl |= (((odly & 0x1) << 16) | ((odly & 0x1) << 17));
-	*clk_cfg |= CCU_MMC_CTRL_ENABLE;
+	ccu->smhc0_clk_cfg |= CCU_MMC_CTRL_ENABLE;
 
 	rval = sdhci->reg->ntsr;
 	rval &= (~(0x3 << 8));
@@ -751,37 +644,6 @@ static int config_delay(sdhci_t *sdhci)
 	rval = sdhci->reg->skew_ctrl;
 	rval |= (0x1 << 4);
 	sdhci->reg->skew_ctrl = rval;
-
-  /* Don't run calibration for 400KHz */
-  if (freq > MMC_CLK_400K) {
-    /* re-run sample delay calibration to stabilise DDR sampling */
-    calib = sdhci->reg->samp_dl;
-    calib &= ~SDXC_CAL_DL_SW_EN;
-    calib &= ~((SDXC_CAL_DL_MASK << SDXC_CAL_DL_SW_SHIFT) | SDXC_CAL_START | SDXC_CAL_DONE);
-    sdhci->reg->samp_dl = calib | SDXC_CAL_START;
-
-    timeout = time_us();
-    do {
-      calib = sdhci->reg->samp_dl;
-      if (time_us() - timeout > SDXC_CAL_TIMEOUT_MS * 1000) {
-        warning("SMHC: sample delay calibration timeout\r\n");
-        sdhci->reg->samp_dl = SDXC_CAL_DL_SW_EN;
-        return -1;
-      }
-    } while (!(calib & SDXC_CAL_DONE));
-
-    delay = (calib >> SDXC_CAL_DL_SHIFT) & SDXC_CAL_DL_MASK;
-    if (!delay)
-      delay = 1; /* avoid a zero delay which behaves poorly under DDR */
-
-    calib &= ~SDXC_CAL_START;
-    calib &= ~(SDXC_CAL_DL_MASK << SDXC_CAL_DL_SW_SHIFT);
-    calib &= ~SDXC_CAL_DL_SW_EN;
-    calib |= (delay << SDXC_CAL_DL_SW_SHIFT) | SDXC_CAL_DL_SW_EN;
-    sdhci->reg->samp_dl = calib;
-
-    debug("SMHC: calibration complete (raw=0x%08" PRIx32 ", delay=%" PRIu32 ") in %" PRIu32 " us\r\n", calib, delay, (u32)(time_us() - timeout));
-  }
 
 	return 0;
 }
@@ -802,19 +664,7 @@ static bool update_card_clock(sdhci_t *sdhci)
 
 bool sdhci_set_clock(sdhci_t *sdhci, smhc_clk_t clock)
 {
-	u32			  div, n, mod_hz, pll, pll_hz, hz;
-	volatile u32 *clk_cfg;
-	u32			  gate_mask	 = 0;
-	u32			  reset_mask = 0;
-	bool		  is_ddr;
-
-	if (!smhc_get_ccu_params(sdhci, &clk_cfg, &gate_mask, &reset_mask)) {
-		error("SMHC: unsupported controller id %u\r\n", sdhci->id);
-		return false;
-	}
-
-	sdhci->clock_active = clock;
-	is_ddr		 = (clock == MMC_CLK_50M_DDR);
+	u32 div, n, mod_hz, pll, pll_hz, hz;
 
 	switch (clock) {
 		case MMC_CLK_400K:
@@ -842,25 +692,19 @@ bool sdhci_set_clock(sdhci_t *sdhci, smhc_clk_t clock)
 	}
 
 	if (hz < 1000000) {
-		debug("SMHC: set clock to %luKHz\r\n", (hz / 1000));
+		trace("SMHC: set clock to %.2fKHz\r\n", (f32)((f32)hz / 1000.0));
 	} else {
-		debug("SMHC: set clock to %luMHz\r\n", (hz / 1000000));
+		trace("SMHC: set clock to %.2fMHz\r\n", (f32)((f32)hz / 1000000.0));
 	}
 
-	/*
-	 * The CCU clock path for SMHC on the T113 introduces an unconditional
-	 * post-divider of 2 (see SUNXI_CCU_MP_DATA_WITH_MUX_GATE_POSTDIV in Linux).
-	 * DDR modes need the module clock to run at 2x the card clock, *before*
-	 * that post-divider. Account for both effects explicitly.
-	 */
-	if (is_ddr)
-		mod_hz = hz * 4; /* 2x for DDR, 2x for the CCU post-div */
+	if (sdhci->clock == MMC_CLK_50M_DDR)
+		mod_hz = hz * 4; /* 4xclk: DDR 4(HS); */
 	else
-		mod_hz = hz * 2; /* compensate the CCU post-div */
+		mod_hz = hz * 2; /* 2xclk: SDR 1/4; */
 
-	if (mod_hz <= CONFIG_COUNTER_FREQUENCY) {
+	if (mod_hz <= 24000000) {
 		pll	   = CCU_MMC_CTRL_OSCM24;
-		pll_hz = CONFIG_COUNTER_FREQUENCY;
+		pll_hz = 24000000;
 	} else {
 		pll	   = CCU_MMC_CTRL_PLL_PERIPH1X;
 		pll_hz = sunxi_clk_get_peri1x_rate(); // 600Mhz
@@ -889,42 +733,17 @@ bool sdhci_set_clock(sdhci_t *sdhci, smhc_clk_t clock)
 
 	sdhci->reg->ntsr |= SUNXI_MMC_NTSR_MODE_SEL_NEW;
 
-	if (gate_mask || reset_mask) {
-		u32 gate_ctrl = ccu->smhc_gate_reset;
-		u32 clk_ctrl  = pll | CCU_MMC_CTRL_N(n) | CCU_MMC_CTRL_M(div) | CCU_MMC_CTRL_NEW_TIMING;
-		if (gate_mask) {
-			gate_ctrl &= ~gate_mask;
-			ccu->smhc_gate_reset = gate_ctrl;
-		}
-		if (reset_mask) {
-			u32 reset_ctrl = gate_ctrl & ~reset_mask;
-			ccu->smhc_gate_reset = reset_ctrl;
-			udelay(2);
-			reset_ctrl |= reset_mask;
-			ccu->smhc_gate_reset = reset_ctrl;
-			gate_ctrl = reset_ctrl;
-		}
-
-		*clk_cfg &= (~CCU_MMC_CTRL_ENABLE);
-		*clk_cfg = clk_ctrl; /* program clk source/div and force new timing mode */
-		*clk_cfg |= CCU_MMC_CTRL_ENABLE;
-
-		if (gate_mask) {
-			gate_ctrl |= gate_mask;
-			ccu->smhc_gate_reset = gate_ctrl;
-		}
-	} else {
-		u32 clk_ctrl = pll | CCU_MMC_CTRL_N(n) | CCU_MMC_CTRL_M(div) | CCU_MMC_CTRL_NEW_TIMING;
-		*clk_cfg &= (~CCU_MMC_CTRL_ENABLE);
-		*clk_cfg = clk_ctrl; /* program clk source/div and force new timing mode */
-		*clk_cfg |= CCU_MMC_CTRL_ENABLE;
-	}
+	ccu->smhc_gate_reset |= CCU_MMC_BGR_SMHC0_RST;
+	ccu->smhc0_clk_cfg &= (~CCU_MMC_CTRL_ENABLE);
+	ccu->smhc0_clk_cfg = pll | CCU_MMC_CTRL_N(n) | CCU_MMC_CTRL_M(div);
+	ccu->smhc0_clk_cfg |= CCU_MMC_CTRL_ENABLE;
+	ccu->smhc_gate_reset |= CCU_MMC_BGR_SMHC0_GATE;
 
 	sdhci->pclk = mod_hz;
 
 	sdhci->reg->clkcr |= SMHC_CLKCR_MASK_D0; // Mask D0 when updating
 	sdhci->reg->clkcr &= ~(0xff); // Clear div (set to 1)
-	if (is_ddr) {
+	if (sdhci->clock == MMC_CLK_50M_DDR) {
 		sdhci->reg->clkcr |= SMHC_CLKCR_CLOCK_DIV(2);
 	}
 	sdhci->reg->clkcr |= SMHC_CLKCR_CARD_CLOCK_ON; // Enable clock
@@ -932,9 +751,9 @@ bool sdhci_set_clock(sdhci_t *sdhci, smhc_clk_t clock)
 	if (!update_card_clock(sdhci))
 		return false;
 
-	sdhci->reg->clkcr &= ~SMHC_CLKCR_MASK_D0; // Restore D0 once the clock update completes
+	config_delay(sdhci);
 
-	return (config_delay(sdhci) == 0);
+	return true;
 }
 
 int sunxi_sdhci_init(sdhci_t *sdhci)
@@ -958,6 +777,7 @@ int sunxi_sdhci_init(sdhci_t *sdhci)
 	sunxi_gpio_set_pull(sdhci->gpio_d3.pin, GPIO_PULL_UP);
 
 	init_default_timing(sdhci);
+	sdhci_set_clock(sdhci, MMC_CLK_400K);
 
 	sdhci->reg->gctrl = SMHC_GCTRL_HARDWARE_RESET;
 	sdhci->reg->rint  = 0xffffffff;
@@ -965,8 +785,6 @@ int sunxi_sdhci_init(sdhci_t *sdhci)
 	sdhci->dma_trglvl = ((0x3 << 28) | (15 << 16) | 240);
 
 	udelay(100);
-
-	sdhci_configure_start_bit_detection(sdhci, false);
 
 	return 0;
 }
