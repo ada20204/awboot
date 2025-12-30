@@ -20,16 +20,16 @@ CHIP ?= t113s3
 LOG_LEVEL ?= 30
 
 # Board file selection based on CHIP
-# Map chip names to board files
-BOARD_FILE_t113s3 := board_t113s3.c
-BOARD_FILE_r528s3 := board_t113s3.c
-BOARD_FILE_h3 := board_h3.c
-BOARD_FILE_v3s := board_h3.c
-BOARD_FILE_f1c100s := board_f1c100s.c
-BOARD_FILE_f1c200s := board_f1c100s.c
+BOARD_FILE_t113s3 := boards/t113s3.c
+BOARD_FILE_t113s4 := boards/t113s3.c
+BOARD_FILE_r528s3 := boards/t113s3.c
+BOARD_FILE_v851s := boards/v851s.c
+BOARD_FILE_h3 := boards/h3.c
+BOARD_FILE_v3s := boards/h3.c
+BOARD_FILE_f1c100s := boards/f1c100s.c
+BOARD_FILE_f1c200s := boards/f1c100s.c
 
-# Select board file (default to board.c if not found)
-BOARD_SRC := $(or $(BOARD_FILE_$(CHIP)),board.c)
+BOARD_SRC := $(BOARD_FILE_$(CHIP))
 
 SRCS := main.c $(BOARD_SRC) lib/debug.c lib/xformat.c lib/fdt.c lib/string.c lib/boot_linux.c lib/boot_nuttx.c
 
