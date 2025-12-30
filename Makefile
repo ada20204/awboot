@@ -35,7 +35,7 @@ SRCS := main.c $(BOARD_SRC) lib/debug.c lib/xformat.c lib/fdt.c lib/string.c lib
 
 INCLUDE_DIRS :=-I . -I include -I lib
 LIBS := -lgcc -nostdlib
-DEFINES := -DLOG_LEVEL=$(LOG_LEVEL) -DBUILD_REVISION=$(shell cat .build_revision)
+DEFINES := -DLOG_LEVEL=$(LOG_LEVEL) -DBUILD_REVISION=$(shell cat .build_revision) -DCONFIG_CHIP_$(shell echo $(CHIP) | tr a-z A-Z)
 
 include	arch/arch.mk
 include	drivers/drivers.mk

@@ -25,32 +25,34 @@ static uint32_t _port_base_get(gpio_t pin)
 {
 	uint32_t port = pin >> PIO_NUM_IO_BITS;
 
+#if defined(CONFIG_CHIP_H3) || defined(CONFIG_CHIP_V3S)
+	/* H3/V3S use 0x01C2xxxx GPIO base */
 	switch (port) {
-		case PORTA:
-			return 0x02000000;
-			break;
-		case PORTB:
-			return 0x02000030;
-			break;
-		case PORTC:
-			return 0x02000060;
-			break;
-		case PORTD:
-			return 0x02000090;
-			break;
-		case PORTE:
-			return 0x020000c0;
-			break;
-		case PORTF:
-			return 0x020000f0;
-			break;
-		case PORTG:
-			return 0x02000120;
-			break;
-		case PORTH:
-			return 0x02000150;
-			break;
+		case PORTA: return 0x01C20800;
+		case PORTB: return 0x01C20824;
+		case PORTC: return 0x01C20848;
+		case PORTD: return 0x01C2086C;
+		case PORTE: return 0x01C20890;
+		case PORTF: return 0x01C208B4;
+		case PORTG: return 0x01C208D8;
 	}
+#else
+	/* T113S3/R528S3/V851S/T113S4 use 0x0200xxxx GPIO base */
+	switch (port) {
+#if defined(CONFIG_CHIP_T113S3) || defined(CONFIG_CHIP_R528S3)
+		case PORTA: return 0x02000000;
+#endif
+		case PORTB: return 0x02000030;
+		case PORTC: return 0x02000060;
+		case PORTD: return 0x02000090;
+		case PORTE: return 0x020000c0;
+		case PORTF: return 0x020000f0;
+		case PORTG: return 0x02000120;
+#if defined(CONFIG_CHIP_T113S3) || defined(CONFIG_CHIP_R528S3)
+		case PORTH: return 0x02000150;
+#endif
+	}
+#endif
 
 	return 0;
 }
