@@ -5,9 +5,17 @@
 *.elf
 *.map
 *.lfs
+*.exe
 
 build-*/*
 
 tools/mksunxi
 
 *boot.img
+
+# Config files
+.config
+.build_revision
+
+# Windows artifacts
+nul
