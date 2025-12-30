@@ -38,6 +38,7 @@ LIBS := -lgcc -nostdlib
 DEFINES := -DLOG_LEVEL=$(LOG_LEVEL) -DBUILD_REVISION=$(shell cat .build_revision)
 
 include	arch/arch.mk
+include	drivers/drivers.mk
 include	lib/fatfs/fatfs.mk
 
 # Use CPU_FLAGS from chip.mk if available, otherwise default
